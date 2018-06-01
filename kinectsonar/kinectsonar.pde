@@ -2,41 +2,59 @@
 import org.openkinect.freenect2.*;
 import org.openkinect.processing.*;
 
-// For kinect data
-Kinect kinect;
-float angle;
-boolean depthNotReady = true;
-int[] depth;
-
 // =================================
 // Sketch parameters
 // Adjust these for different results
 //==================================
 // Clamp depth values into this range
-int minDepth = 300;
-int maxDepth = 700;
+int minDepth = 600;
+int maxDepth = 1200;
 
-int totalCircles = 50;    
-int totalCircleSegs = 100;
+int maxCircles = 100;
+int circleAge = 2000; // seconds * 1000
+float radiusSpeed = 10.0;
 
-float circleSpeed = 20.0;
-int maxCircleAge = 100;
-
-//==================================
-// Calculated once when sketch starts
-//==================================
-
-float circleCenterX[];
-float circleCenterY[];
-float segRadius[][];
-int circleAge[];
-
-int activeCircles = 1;
 
 //==================================
-// Inputs
+// Kinect data
 //==================================
-int drawOption = 0; // Controls the drawing style
+Kinect kinect;
+float angle;
+boolean depthNotReady = true;
+int[] depth;
+PImage depthImage;
+color[] depthToColorMap;
+
+void setupKinect() {
+  kinect = new Kinect(this);
+  angle = kinect.getTilt();
+  
+  kinect.initDepth();
+  kinect.enableMirror(true);
+  
+  depthImage = createImage(kinect.width, kinect.height, RGB);
+  
+  depthToColorMap = new color[2048];
+  color grey = color(92,92,92);
+  color blue = color(128,128,255);
+  for(int i = 0; i < 2048; ++i) {
+    float depth = constrain(
+          float(i - minDepth) / float(maxDepth - minDepth), 
+          0, 1);
+    depthToColorMap[i] = lerpColor(blue, grey, depth);
+  }
+}
+
+void depthEvent(Kinect k) {
+  depth = k.getRawDepth();
+  depthNotReady = false;
+  
+  depthImage.loadPixels();
+  for(int i = 0; i < depth.length; ++i) {
+    depthImage.pixels[i] = depthToColorMap[depth[i]];
+  }
+  depthImage.updatePixels();
+}
 
 //==================================
 // GetScaledDepth - Returns the depth
@@ -64,88 +82,103 @@ float GetScaledDepth(float x, float y) {
   return 1.0 - float(iDepth)/float(maxDepth - minDepth);
 }
 
-void initCircle(int idx) {
-  circleCenterX[idx] = random(10, width - 10);
-  circleCenterY[idx] = random(10, height - 10);
+//==================================
+// Circle sweep data
+//==================================
+
+
+class CircleSweep {
+  float centerX;
+  float centerY;
+  float radius;
+  color clr;
+  int   timeOfDeath;
+  boolean alive;
   
-  for(int segIdx = 0; segIdx < totalCircleSegs; ++segIdx) {
-    segRadius[idx][segIdx] = 0f;
+  CircleSweep(int beginTime) {
+    initSweep();
+    alive = false;
+    timeOfDeath = millis() + beginTime;
+  }
+
+  void initSweep() {
+    centerX = random(10, width - 10);
+    centerY = random(10, height - 10);
+    radius = 8;
+    clr = color(random(0,256), 255, 255);
+    timeOfDeath = millis() + circleAge;
+    alive = true;
+  }
+  
+  void update() {
+    radius += radiusSpeed;
+    if(timeOfDeath < millis()) {
+      initSweep();
+    }
+  }
+  
+  void draw() {
+    if(!alive) return;
+    noStroke();
+    fill(0,0,255);
+    float circumference = TAU * radius;
+    int divs = floor(circumference/10.0);
+    float angleInc = TAU/divs;
+    angle = 0;
+    beginShape(QUAD_STRIP);
+    texture(depthImage);
+    for(int i = 0; i <= divs; ++i) {
+      float x1 = centerX + cos(angle) * (radius - 2);
+      float y1 = centerY + sin(angle) * (radius - 2);
+      float x2 = centerX + cos(angle) * (radius + 2);
+      float y2 = centerY + sin(angle) * (radius + 2);
+      float tx1 = map(x1, 0, width, 0, depthImage.width);
+      float ty1 = map(y1, 0, height, 0, depthImage.height);
+      float tx2 = map(x2, 0, width, 0, depthImage.width);
+      float ty2 = map(y2, 0, height, 0, depthImage.height);
+      vertex(x1, y1, tx1, ty1);
+      vertex(x2, y2, tx2, ty2);
+      angle += angleInc;
+    }
+    endShape();
   }
 }
 
-void expandCircle(int idx) {
-  float angleInc = TAU/float(totalCircleSegs);
-  
-  float angle = 0f;
-  for(int segIdx = 0; segIdx < totalCircleSegs; ++segIdx) {
-    float radius = segRadius[idx][segIdx];
-    float offX = cos(angle) * radius;
-    float offY = sin(angle) * radius;
-    float depth = GetScaledDepth(circleCenterX[idx] + offX, circleCenterY[idx] + offY);
-    segRadius[idx][segIdx] = radius + circleSpeed * (1.0 - depth);
-    angle += angleInc;
+CircleSweep[] circles;
+
+void setupCircles() {
+  circles = new CircleSweep[maxCircles];
+  int beginTimeOffset = circleAge/maxCircles;
+  for(int i = 0; i < maxCircles; ++i) {
+    circles[i] = new CircleSweep(i * beginTimeOffset);
   }
 }
 
-void drawCircle(int idx) {
-  float angleInc = TAU/float(totalCircleSegs);
-  
-  float angle = 0f;
-  beginShape();
-  for(int segIdx = 0; segIdx < totalCircleSegs; ++segIdx) {
-    float radius = segRadius[idx][segIdx];
-    float offX = cos(angle) * radius;
-    float offY = sin(angle) * radius;
-    vertex(circleCenterX[idx] + offX, circleCenterY[idx] + offY);
-    angle = angle + angleInc;
+void updateCircles() {
+  for(int i = 0; i < maxCircles; ++i) {
+    circles[i].update();
   }
-  endShape(CLOSE);
+}
+
+void drawCircles() {
+  for(int i = 0; i < maxCircles; ++i) {
+    circles[i].draw();
+  }
 }
 
 void setup() {  
-  fullScreen();
-  kinect = new Kinect(this);
-  angle = kinect.getTilt();
-  
-  kinect.initDepth();
-  kinect.enableMirror(true);
-
-  // calulate start variables
-
-  circleCenterX = new float[totalCircles];
-  circleCenterY = new float[totalCircles];
-  segRadius = new float[totalCircles][totalCircleSegs];
-  circleAge = new int[totalCircles];
-  
-  for(int idx = 0; idx < totalCircles; ++idx) {
-    circleAge[idx] = -4 * idx;
-  }
+  fullScreen(P2D);
+  setupKinect();
+  setupCircles();
 }
 
-void depthEvent(Kinect k) {
-  depth = k.getRawDepth();
-  depthNotReady = false;
-}
 
 void draw() {
-  fill(0,0,0,10);
+  fill(0,0,0,40);
   rect(0, 0, width, height);
-  stroke(255);
-  noFill();
   
-  for(int idx = 0; idx < totalCircles; ++idx) {
-    if(circleAge[idx] == 0) {
-      initCircle(idx);
-    }
-    if(circleAge[idx] >= 0) {
-      drawCircle(idx);
-      expandCircle(idx);
-    }
-    circleAge[idx] += 1;
-    if(circleAge[idx] == maxCircleAge) {
-      circleAge[idx] = 0;
-    }
-  }
+  drawCircles();
+  updateCircles();
 }
 
 void keyPressed() {

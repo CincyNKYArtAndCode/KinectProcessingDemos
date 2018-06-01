@@ -30,7 +30,7 @@ float segSpacingX; // X spacing between each line
 //==================================
 // Inputs
 //==================================
-int drawOption = 0; // Controls the drawing style
+int drawOption = 1; // Controls the drawing style
 
 
 //==================================
@@ -60,7 +60,7 @@ float GetScaledDepth(float x, float y) {
 }
 
 void setup() {  
-  fullScreen();
+  fullScreen(P2D);
   kinect = new Kinect(this);
   angle = kinect.getTilt();
   
@@ -120,13 +120,36 @@ void drawScanLines() {
   scanYPos = (scanYPos + 20) % height;
 }
 
-void draw() {
-  if(drawOption == 0 || drawOption == 1) {
-    drawLines(drawOption == 1);
+void drawFatLines() {
+  fill(0, 0, 0);
+  rect(0, 0, width, height);
+  noStroke();
+  fill(255,255,255);
+  
+  for(int lineNum = 0; lineNum < numLines; ++lineNum) {
+    beginShape(QUAD_STRIP);
+    for(int seg = 0; seg < numLineSegs; ++seg) {
+      float ptX = seg*segSpacingX;
+      float ptY = (lineNum + 1)*lineSpacingY;
+      float offsetY = GetScaledDepth(ptX, ptY) * depthLineOffset/2;
+      vertex(ptX, ptY - offsetY);
+      vertex(ptX, ptY + offsetY);
+    }
+    endShape();
   }
-  else if(drawOption == 2) {
+}
+
+void draw() {
+  if(drawOption == 1 || drawOption == 2) {
+    drawLines(drawOption == 2);
+  }
+  else if(drawOption == 3) {
     drawScanLines();
   }
+  else if(drawOption == 4) {
+    drawFatLines();
+  }
+  
 }
 
 void keyPressed() {
@@ -140,12 +163,15 @@ void keyPressed() {
     kinect.setTilt(angle);
   }
   else if(key == '1') {
-    drawOption = 0;
-  }
-  else if(key == '2') {
     drawOption = 1;
   }
-  else if(key == '3') {
+  else if(key == '2') {
     drawOption = 2;
+  }
+  else if(key == '3') {
+    drawOption = 3;
+  }
+  else if(key == '4') {
+    drawOption = 4;
   }
 }

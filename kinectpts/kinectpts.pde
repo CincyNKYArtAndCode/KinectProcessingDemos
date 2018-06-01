@@ -8,6 +8,7 @@ float angle;
 boolean depthNotReady = true;
 int[] depth;
 
+
 // =================================
 // Sketch parameters
 // Adjust these for different results
@@ -28,10 +29,13 @@ int cols; // num dots in a row
 float rowSpacing;
 float colSpacing;
 
+PShape flower;
+PImage reveilImage;
+
 //==================================
 // Inputs
 //==================================
-int drawOption = 0; // Controls the drawing style
+int drawOption = 1; // Controls the drawing style
 
 //==================================
 // GetScaledDepth - Returns the depth
@@ -60,7 +64,7 @@ float GetScaledDepth(float x, float y) {
 }
 
 void setup() {  
-  fullScreen();
+  fullScreen(P2D);
   kinect = new Kinect(this);
   angle = kinect.getTilt();
   
@@ -74,7 +78,8 @@ void setup() {
   rowSpacing = height/ float(rows + 1);
   colSpacing = width / float(cols + 1);
   
-  println(rows, cols, rowSpacing, colSpacing);
+  flower = loadShape("yellow_flower.svg");
+  reveilImage = loadImage("landscape.jpg");
 }
 
 void depthEvent(Kinect k) {
@@ -142,14 +147,67 @@ void drawDepthToCircleSize() {
   }
 }
 
+void drawDepthToFlowerSize() {
+  fill(0,0,0);
+  rect(0, 0, width, height);
+  shapeMode(CENTER);
+  
+  for(int row = 0; row < rows; ++row) {
+    for(int col = 0; col < cols; ++col) {
+      float ptX = (col + 1)*colSpacing;
+      float ptY = (row + 1)*rowSpacing;
+      float depth = GetScaledDepth(ptX, ptY);
+      if(depth > 0.05) {
+        float shapeSize = depth * maxCircleSize;
+        shape(flower, ptX, ptY, shapeSize, shapeSize);
+      }
+    }
+  }
+}
+
+void drawImageReveil() {
+  fill(0,0,0);
+  rect(0, 0, width, height);
+  
+  beginShape(QUADS);
+  texture(reveilImage);
+  for(int row = 0; row < rows; ++row) {
+    for(int col = 0; col < cols; ++col) {
+      float ptX = (col + 1)*colSpacing;
+      float ptY = (row + 1)*rowSpacing;
+      float depth = GetScaledDepth(ptX, ptY);
+      if(depth > 0.05) {
+        float shapeSize = depth * maxCircleSize/2;
+        float x1 = ptX - shapeSize;
+        float y1 = ptY - shapeSize;
+        float x2 = ptX + shapeSize;
+        float y2 = ptY + shapeSize;
+        float tx1 = map(x1, 0, width, 0, reveilImage.width);
+        float ty1 = map(y1, 0, height, 0, reveilImage.height);
+        float tx2 = map(x2, 0, width, 0, reveilImage.width);
+        float ty2 = map(y2, 0, height, 0, reveilImage.height);
+        vertex(x1, y1, tx1, ty1);
+        vertex(x1, y2, tx1, ty2);
+        vertex(x2, y2, tx2, ty2);
+        vertex(x2, y1, tx2, ty1);
+      }
+    }
+  }
+  endShape();
+}
+
 
 void draw() {
-  if(drawOption == 0)
+  if(drawOption == 1)
     drawDepthToSize();
-  else if(drawOption == 1)
-    drawDepthToJitter();
   else if(drawOption == 2)
+    drawDepthToJitter();
+  else if(drawOption == 3)
     drawDepthToCircleSize();
+  else if(drawOption == 4)
+    drawDepthToFlowerSize();
+  else if(drawOption == 5)
+    drawImageReveil();
 }
 
 void keyPressed() {
@@ -163,12 +221,18 @@ void keyPressed() {
     kinect.setTilt(angle);
   }
   else if(key == '1') {
-    drawOption = 0;
-  }
-  else if(key == '2') {
     drawOption = 1;
   }
-  else if(key == '3') {
+  else if(key == '2') {
     drawOption = 2;
+  }
+  else if(key == '3') {
+    drawOption = 3;
+  }
+  else if(key == '4') {
+    drawOption = 4;
+  }
+  else if(key == '5') {
+    drawOption = 5;
   }
 }
